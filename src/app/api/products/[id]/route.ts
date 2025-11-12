@@ -1,61 +1,70 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+// src/app/api/products/[id]/route.ts
+import { NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+const STATUS_SET = new Set([
+  'NA_MAGAZYNIE',
+  'WYSTAWIONE',
+  'ZAREZERWOWANE',
+  'SPRZEDANE',
+  'ARCHIWUM',
+]);
+const safeStatus = (v: string | null) => (v && STATUS_SET.has(v) ? v : undefined);
 
-type TParams = { id: string };
-
-function safeStatus(v?: string | null): Prisma.ProductStatus | undefined {
-  if (!v) return undefined;
-  const list = Object.values(Prisma.ProductStatus) as string[];
-  return list.includes(v) ? (v as Prisma.ProductStatus) : undefined;
-}
-
-export async function GET(_req: Request, ctx: { params: Promise<TParams> }) {
+/** GET /api/products/:id */
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
 
   const product = await prisma.product.findUnique({
     where: { id },
     include: {
-      photos: { orderBy: [{ isFront: "desc" }, { order: "asc" }, { createdAt: "asc" }] },
+      photos: {
+        orderBy: [{ isFront: 'desc' }, { order: 'asc' }, { createdAt: 'asc' }],
+      },
     },
   });
 
-  if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(product, { status: 200 });
 }
 
-export async function PATCH(req: Request, ctx: { params: Promise<TParams> }) {
+/** PATCH /api/products/:id */
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const body = await req.json().catch(() => ({} as any));
+
+  const data: any = {
+    title: body.title ?? undefined,
+    brand: body.brand ?? undefined,
+    size: body.size ?? undefined,
+    condition: body.condition ?? undefined,
+    priceCents:
+      typeof body.priceCents === 'number'
+        ? Math.max(0, Math.floor(body.priceCents))
+        : undefined,
+    status: safeStatus(body.status ?? null),
+    notes: body.notes ?? undefined,
+  };
+
+  const updated = await prisma.product.update({
+    where: { id },
+    data,
+    include: {
+      photos: {
+        orderBy: [{ isFront: 'desc' }, { order: 'asc' }, { createdAt: 'asc' }],
+      },
+    },
+  });
+
+  return NextResponse.json(updated, { status: 200 });
+}
+
+/** DELETE /api/products/:id */
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
 
-  try {
-    const body = await req.json().catch(() => ({} as any));
+  await prisma.photo.deleteMany({ where: { productId: id } });
+  await prisma.product.delete({ where: { id } });
 
-    const data: Prisma.ProductUpdateInput = {
-      title: body.title ?? undefined,
-      brand: body.brand ?? undefined,
-      size: body.size ?? undefined,
-      condition: body.condition ?? undefined,
-      notes: body.notes ?? undefined,
-      priceCents:
-        typeof body.priceCents === "number" ? body.priceCents : (undefined as unknown as number),
-      status: safeStatus(body.status) ?? undefined,
-      sku: body.sku ?? undefined,
-    };
-
-    const updated = await prisma.product.update({
-      where: { id },
-      data,
-      include: {
-        photos: { orderBy: [{ isFront: "desc" }, { order: "asc" }, { createdAt: "asc" }] },
-      },
-    });
-
-    return NextResponse.json(updated, { status: 200 });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Update failed" }, { status: 400 });
-  }
+  return new NextResponse(null, { status: 204 });
 }

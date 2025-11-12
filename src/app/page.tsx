@@ -1,162 +1,141 @@
 // src/app/page.tsx
-"use client";
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import ProductCard from '@/components/ProductCard';
 
-type Photo = {
-  id: string;
-  productId: string;
-  url: string;
-  isFront: boolean;
-  order: number | null;
-  createdAt: string;
-};
+type UiPhoto = { id: string; url: string; isFront?: boolean | null; order?: number | null; createdAt?: string | null; };
+type UIProduct = { id: string; title: string; brand: string | null; size: string | null; condition: string | null; status: string; priceCents: number; photos: UiPhoto[]; };
+type Facets = { brands: string[]; sizes: string[]; conditions: string[]; statuses: string[]; };
+type ApiRes = { total: number; page: number; lastPage: number; limit: number; items: UIProduct[]; facets: Facets; };
 
-type Product = {
-  id: string;
-  title: string;
-  brand: string | null;
-  size: string | null;
-  condition: string | null;
-  status: string;
-  priceCents: number;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-  photos: Photo[];
-};
-
-type Facets = {
-  brands: string[];
-  sizes: string[];
-  conditions: string[];
-  statuses: string[];
-};
-
-type ListResp = {
-  total: number;
-  page: number;
-  limit: number;
-  lastPage: number;
-  items: Product[];
-  facets: Facets;
+const getUrl = () => (typeof window !== 'undefined' ? new URL(window.location.href) : new URL('http://localhost'));
+const buildApiUrl = (q: { query: string; sort: string; statusCsv: string; brandsCsv: string; sizesCsv: string; conditionsCsv: string; page: number; limit: number; }) => {
+  const u = typeof window !== 'undefined' ? new URL('/api/products', window.location.origin) : new URL('http://localhost/api/products');
+  if (q.query) u.searchParams.set('query', q.query);
+  if (q.sort) u.searchParams.set('sort', q.sort);
+  u.searchParams.set('status', q.statusCsv);
+  u.searchParams.set('brands', q.brandsCsv);
+  u.searchParams.set('sizes', q.sizesCsv);
+  u.searchParams.set('conditions', q.conditionsCsv);
+  u.searchParams.set('page', String(q.page));
+  u.searchParams.set('limit', String(q.limit));
+  return u;
 };
 
 export default function Page() {
-  const [items, setItems] = useState<Product[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [limit] = useState(12);
-  const [lastPage, setLastPage] = useState(1);
-  const [facets, setFacets] = useState<Facets>({
-    brands: [],
-    sizes: [],
-    conditions: [],
-    statuses: [],
-  });
+  const router = useRouter();
 
-  const [query, setQuery] = useState("");
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [selectedConds, setSelectedConds] = useState<string[]>([]);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [sort, setSort] = useState("CREATED_DESC");
+  const initial = useMemo(() => {
+    const u = getUrl();
+    return {
+      query: u.searchParams.get('query') ?? '',
+      sort: u.searchParams.get('sort') ?? 'CREATED_DESC',
+      statusCsv: u.searchParams.get('status') ?? '',
+      brandsCsv: u.searchParams.get('brands') ?? '',
+      sizesCsv: u.searchParams.get('sizes') ?? '',
+      conditionsCsv: u.searchParams.get('conditions') ?? '',
+      page: Math.max(1, Number(u.searchParams.get('page') ?? '1')),
+      limit: Math.min(100, Math.max(1, Number(u.searchParams.get('limit') ?? '12'))),
+    };
+  }, []);
+
+  const [query, setQuery] = useState(initial.query);
+  const [sort, setSort] = useState(initial.sort);
+  const [statusCsv, setStatusCsv] = useState(initial.statusCsv);
+  const [brandsCsv, setBrandsCsv] = useState(initial.brandsCsv);
+  const [sizesCsv, setSizesCsv] = useState(initial.sizesCsv);
+  const [conditionsCsv, setConditionsCsv] = useState(initial.conditionsCsv);
+  const [page, setPage] = useState(initial.page);
+  const [limit, setLimit] = useState(initial.limit);
+
+  const [items, setItems] = useState<UIProduct[]>([]);
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
+  const [facets, setFacets] = useState<Facets>({ brands: [], sizes: [], conditions: [], statuses: [] });
 
   const loadingRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
 
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (query.trim()) p.set("query", query.trim());
-    if (selectedBrands.length) p.set("brands", selectedBrands.join(","));
-    if (selectedSizes.length) p.set("sizes", selectedSizes.join(","));
-    if (selectedConds.length) p.set("conditions", selectedConds.join(","));
-    if (selectedStatuses.length) p.set("statuses", selectedStatuses.join(","));
-    p.set("sort", sort);
-    p.set("page", String(page));
-    p.set("limit", String(limit));
-    return p.toString();
-  }, [
-    query,
-    selectedBrands,
-    selectedSizes,
-    selectedConds,
-    selectedStatuses,
-    sort,
-    page,
-    limit,
-  ]);
+  const pushUrl = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = getUrl();
+    const sp = url.searchParams;
+    query ? sp.set('query', query) : sp.delete('query');
+    sp.set('sort', sort);
+    sp.set('status', statusCsv);
+    sp.set('brands', brandsCsv);
+    sp.set('sizes', sizesCsv);
+    sp.set('conditions', conditionsCsv);
+    sp.set('page', String(page));
+    sp.set('limit', String(limit));
+    window.history.pushState({}, '', url);
+  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, page, limit]);
 
-  const load = useCallback(
-    async (mode: "reset" | "append" = "reset") => {
-      if (loadingRef.current) return;
-      loadingRef.current = true;
+  const fetchProducts = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const apiUrl = buildApiUrl({ query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, page, limit });
+      const res = await fetch(apiUrl.toString(), { cache: 'no-store' });
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as ApiRes;
+      setItems(data.items);
+      setTotal(data.total);
+      setLastPage(data.lastPage);
+      setFacets(data.facets);
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, page, limit]);
 
-      if (abortRef.current) abortRef.current.abort();
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
-
-      try {
-        const res = await fetch(`/api/products?${qs}`, {
-          cache: "no-store",
-          signal: ctrl.signal,
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as ListResp;
-
-        setTotal(data.total);
-        setLastPage(data.lastPage);
-        setFacets(data.facets);
-
-        setItems((prev) =>
-          mode === "append" ? [...prev, ...data.items] : data.items
-        );
-      } finally {
-        loadingRef.current = false;
-      }
-    },
-    [qs]
-  );
-
-  // pierwszy załadunek + każda zmiana filtrów/sort/page
   useEffect(() => {
-    load("reset");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qs]);
+    pushUrl();
+    fetchProducts();
+  }, [pushUrl, fetchProducts]);
 
-  const loadMore = () => {
-    if (page < lastPage) setPage((p) => p + 1);
+  const resetAndFetch = (updater: () => void) => {
+    updater();
+    setPage(1);
   };
 
-  // kiedy rośnie page -> dołóż elementy
-  useEffect(() => {
-    if (page > 1) load("append");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  async function createProduct() {
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      alert(await res.text());
+      return;
+    }
+    const p = (await res.json()) as { id: string };
+    router.push(`/products/${p.id}`);
+  }
 
   return (
-    <main className="p-4 max-w-6xl mx-auto space-y-4">
-      <h1 className="text-xl font-semibold">Magazyn</h1>
+    <div className="p-6">
+      <div className="mb-4 flex items-center gap-3">
+        <h1 className="text-2xl font-bold">Magazyn</h1>
+        <button className="ml-auto rounded bg-black text-white px-4 py-2" onClick={createProduct}>
+          Dodaj produkt
+        </button>
+      </div>
 
-      {/* Bardzo prosty panel filtrów (dla testów) */}
-      <section className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-3 items-center mb-6">
         <input
-          className="border px-2 py-1 rounded"
+          className="border px-3 py-2 rounded w-64"
           placeholder="Szukaj…"
           value={query}
-          onChange={(e) => {
-            setPage(1);
-            setQuery(e.target.value);
-          }}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && resetAndFetch(() => {})}
         />
 
         <select
-          className="border px-2 py-1 rounded"
+          className="border px-2 py-2 rounded"
           value={sort}
-          onChange={(e) => {
-            setPage(1);
-            setSort(e.target.value);
-          }}
+          onChange={(e) => resetAndFetch(() => setSort(e.target.value))}
+          title="Sortowanie"
         >
           <option value="CREATED_DESC">Najnowsze</option>
           <option value="CREATED_ASC">Najstarsze</option>
@@ -164,74 +143,80 @@ export default function Page() {
           <option value="PRICE_ASC">Cena ↑</option>
         </select>
 
-        {/* na szybko: filtr po statusie */}
-        <select
-          className="border px-2 py-1 rounded"
-          value={selectedStatuses[0] ?? ""}
-          onChange={(e) => {
-            setPage(1);
-            setSelectedStatuses(e.target.value ? [e.target.value] : []);
-          }}
+        <input
+          className="border px-3 py-2 rounded w-56"
+          placeholder="Statusy (CSV)"
+          value={statusCsv}
+          onChange={(e) => setStatusCsv(e.target.value)}
+          onBlur={() => resetAndFetch(() => {})}
+          list="facet-status"
+        />
+        <datalist id="facet-status">{facets.statuses.map((s) => <option key={s} value={s} />)}</datalist>
+
+        <input
+          className="border px-3 py-2 rounded w-48"
+          placeholder="Marki (CSV)"
+          value={brandsCsv}
+          onChange={(e) => setBrandsCsv(e.target.value)}
+          onBlur={() => resetAndFetch(() => {})}
+          list="facet-brands"
+        />
+        <datalist id="facet-brands">{facets.brands.map((b) => <option key={b} value={b} />)}</datalist>
+
+        <input
+          className="border px-3 py-2 rounded w-40"
+          placeholder="Rozmiary (CSV)"
+          value={sizesCsv}
+          onChange={(e) => setSizesCsv(e.target.value)}
+          onBlur={() => resetAndFetch(() => {})}
+          list="facet-sizes"
+        />
+        <datalist id="facet-sizes">{facets.sizes.map((b) => <option key={b} value={b} />)}</datalist>
+
+        <input
+          className="border px-3 py-2 rounded w-56"
+          placeholder="Stany (CSV)"
+          value={conditionsCsv}
+          onChange={(e) => setConditionsCsv(e.target.value)}
+          onBlur={() => resetAndFetch(() => {})}
+          list="facet-conditions"
+        />
+        <datalist id="facet-conditions">{facets.conditions.map((c) => <option key={c} value={c} />)}</datalist>
+
+        <button className="rounded bg-black text-white px-4 py-2" onClick={() => resetAndFetch(() => {})}>
+          Filtruj
+        </button>
+      </div>
+
+      <div className="text-sm text-gray-600 mb-3">
+        {total} wyników • strona {page}/{lastPage} • limit {limit}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map((p) => (
+          <ProductCard key={p.id} p={p} />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-center gap-3 mt-8">
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
         >
-          <option value="">— status —</option>
-          {facets.statuses.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <span className="ml-auto text-sm opacity-70">
-          {total} wyników • strona {page}/{lastPage}
+          ← Poprzednia
+        </button>
+        <span className="text-sm text-gray-700">
+          strona {page} / {Math.max(1, lastPage)}
         </span>
-      </section>
-
-      <section className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {items.map((p) => {
-          const cover =
-            p.photos.find((ph) => ph.isFront) ?? p.photos[0] ?? null;
-
-          return (
-            <article
-              key={p.id}
-              className="border rounded-lg overflow-hidden bg-white"
-            >
-              {cover ? (
-                <img
-                  key={cover.id}
-                  src={cover.url}
-                  alt={p.title}
-                  className="w-full aspect-square object-cover"
-                />
-              ) : (
-                <div className="w-full aspect-square bg-gray-100" />
-              )}
-              <div className="p-2 space-y-1">
-                <div className="text-sm font-medium line-clamp-2">
-                  {p.title}
-                </div>
-                <div className="text-xs opacity-70">
-                  {p.brand ?? "—"} • {p.size ?? "—"}
-                </div>
-                <div className="text-xs">{(p.priceCents / 100).toFixed(2)} zł</div>
-                <div className="text-[10px] uppercase opacity-60">{p.status}</div>
-              </div>
-            </article>
-          );
-        })}
-      </section>
-
-      {page < lastPage && (
-        <div className="flex justify-center">
-          <button
-            className="px-3 py-1 border rounded"
-            onClick={loadMore}
-            disabled={loadingRef.current}
-          >
-            Załaduj więcej
-          </button>
-        </div>
-      )}
-    </main>
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          disabled={page >= lastPage}
+          onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+        >
+          Następna →
+        </button>
+      </div>
+    </div>
   );
 }
