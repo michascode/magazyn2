@@ -1,45 +1,42 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir } from 'node:fs/promises';
-import path from 'node:path';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import path from "node:path";
+import fs from "node:fs/promises";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type TParams = { id: string };
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 export async function POST(req: Request, ctx: { params: Promise<TParams> }) {
-  const { id: productId } = await ctx.params;
+  const { id } = await ctx.params;
 
-  const fd = await req.formData();
-  const files = fd.getAll('photos').filter((f): f is File => f instanceof File);
+  const form = await req.formData();
+  const file = form.get("file");
 
-  if (!files.length) return NextResponse.json({ error: 'No files' }, { status: 400 });
+  if (!file || typeof file === "string") {
+    return NextResponse.json({ error: "No file" }, { status: 400 });
+  }
 
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  const bytes = Buffer.from(await (file as File).arrayBuffer());
+  const uploadsDir = process.env.UPLOAD_DIR ?? "uploads";
+  const absDir = path.join(process.cwd(), uploadsDir);
+  await fs.mkdir(absDir, { recursive: true });
 
-  const writes = files.map(async (file, i) => {
-    const buf = Buffer.from(await file.arrayBuffer());
-    const ext = path.extname(file.name || '').toLowerCase() || '.jpg';
-    const fileName = `${productId}-${Date.now()}-${i}${ext}`;
-    const rel = path.join('uploads', fileName);
-    const abs = path.join(process.cwd(), rel);
-    await writeFile(abs, buf);
-    return prisma.photo.create({
-      data: {
-        productId,
-        url: `/${rel.replace(/\\/g,'/')}`,
-        order: i,
-        isFront: false,
-        sizeBytes: buf.length,
-      }
-    });
+  const safeName = (file as File).name.replace(/\s+/g, "_");
+  const fileName = `${id}_${Date.now()}_${safeName}`;
+  const dest = path.join(absDir, fileName);
+  await fs.writeFile(dest, bytes);
+
+  const url = `/${uploadsDir}/${fileName}`;
+
+  const created = await prisma.photo.create({
+    data: {
+      productId: id,
+      url,
+      isFront: false,
+    },
   });
 
-  await Promise.all(writes);
-
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-    include: { photos: { orderBy: [{ isFront:'desc' }, { order:'asc' }, { createdAt:'asc' }] } }
-  });
-
-  return NextResponse.json(product, { status: 200 });
+  return NextResponse.json(created, { status: 200 });
 }

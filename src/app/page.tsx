@@ -1,123 +1,257 @@
+// src/app/page.tsx
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type Photo = { id: string; url: string; isFront: boolean; order: number };
+type ProductStatus = 'NA_MAGAZYNIE' | 'ZAREZERWOWANY' | 'SPRZEDANY'; // dopasuj do Twojego enumu jeśli różni się
+type Photo = { id: string; url: string; isFront: boolean; order: number; createdAt: string };
 type Product = {
-  id: string; title: string; priceCents: number;
-  brand?: string | null; size?: string | null; condition?: string | null;
-  status: string; photos: Photo[];
+  id: string;
+  title: string;
+  brand: string | null;
+  size: string | null;
+  condition: string | null;
+  status: ProductStatus;
+  priceCents: number;
+  sku: string | null;
+  notes: string | null;
+  createdAt: string;
+  photos: Photo[];
+};
+
+type Facets = {
+  brands?: string[];
+  sizes?: string[];
+  conditions?: string[];
+  statuses?: ProductStatus[];
 };
 
 export default function Page() {
   const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Product | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [facets, setFacets] = useState<Facets>({});
+  const [page, setPage] = useState(1);
+  const [lastPage, setLastPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch('/api/products?limit=12', { cache: 'no-store' });
-    const data = await res.json();
-    setItems(data.items ?? []);
-    setLoading(false);
+  // filtry
+  const [query, setQuery] = useState('');
+  const [brands, setBrands] = useState<string[]>([]);
+  const [sizes, setSizes] = useState<string[]>([]);
+  const [condition, setCondition] = useState<string | null>(null);
+  const [status, setStatus] = useState<ProductStatus | ''>('');
+  const [sortKey, setSortKey] = useState('CREATED_DESC');
+  const [limit, setLimit] = useState(12);
+
+  const loadingRef = useRef(false);
+
+  const buildParams = useCallback(
+    (targetPage: number, withFacets: boolean) => {
+      const p = new URLSearchParams();
+      p.set('page', String(targetPage));
+      p.set('limit', String(limit));
+      p.set('sort', sortKey);
+      if (query.trim()) p.set('query', query.trim());
+      brands.forEach((b) => p.append('brands', b));
+      sizes.forEach((s) => p.append('sizes', s));
+      if (condition) p.set('condition', condition);
+      if (status) p.set('status', status);
+      p.set('facets', withFacets ? '1' : '0');
+      return p;
+    },
+    [brands, sizes, condition, status, query, limit, sortKey]
+  );
+
+  const loadProducts = useCallback(
+    async (mode: 'reset' | 'append' = 'reset') => {
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+
+      const targetPage = mode === 'reset' ? 1 : page + 1;
+      const params = buildParams(targetPage, mode === 'reset');
+
+      const res = await fetch(`/api/products?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        loadingRef.current = false;
+        throw new Error(await res.text());
+      }
+      const data = await res.json();
+
+      setTotal(data.total ?? 0);
+      setLastPage(data.lastPage ?? 1);
+
+      if (mode === 'reset') {
+        setItems(data.items ?? []);
+        setPage(1);
+        setFacets(data.facets ?? {});
+      } else {
+        setItems((prev) => [...prev, ...(data.items ?? [])]);
+        setPage((prev) => prev + 1);
+      }
+
+      loadingRef.current = false;
+    },
+    [page, buildParams]
+  );
+
+  // pierwsze ładowanie (facets=1)
+  useEffect(() => {
+    // reset przy starcie
+    loadProducts('reset');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // helper do zaznaczania filtra
+  function toggle<T extends string>(arr: T[], value: T): T[] {
+    return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
+  }
 
-  const create = useCallback(async () => {
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Nowy produkt', status: 'NA_MAGAZYNIE' }),
-    });
-    if (!res.ok) return alert(await res.text());
-    const p: Product = await res.json();
-    setSelected(p);
-    await load();
-  }, [load]);
-
-  const onFiles = useCallback(async (ev: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selected) return;
-    const files = ev.target.files;
-    if (!files?.length) return;
-    const fd = new FormData();
-    Array.from(files).forEach(f => fd.append('photos', f));
-    const res = await fetch(`/api/products/${selected.id}/photos`, { method: 'POST', body: fd });
-    if (!res.ok) return alert(await res.text());
-    const p: Product = await res.json();
-    setSelected(p);
-    await load();
-    ev.target.value = '';
-  }, [selected, load]);
-
-  const setFront = useCallback(async (p: Product, photoId: string) => {
-    const res = await fetch(`/api/products/${p.id}/photos/${photoId}`, {
-      method: 'PATCH', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ isFront: true }),
-    });
-    if (!res.ok) return alert(await res.text());
-    await load();
-  }, [load]);
-
-  const removePhoto = useCallback(async (p: Product, photoId: string) => {
-    const res = await fetch(`/api/products/${p.id}/photos/${photoId}`, { method: 'DELETE' });
-    if (!res.ok) return alert(await res.text());
-    await load();
-  }, [load]);
+  // apply filtrów – pełny reset (facets=1, nowy zestaw)
+  const applyFilters = useCallback(() => loadProducts('reset'), [loadProducts]);
 
   return (
-    <main className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-3 mb-4">
+    <main className="mx-auto max-w-6xl p-4 space-y-6">
+      <h1 className="text-2xl font-semibold">Magazyn produktów</h1>
+
+      {/* FILTRY */}
+      <section className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Szukaj: tytuł / marka / SKU / notatki"
+          className="border rounded px-3 py-2"
+        />
+
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value)} className="border rounded px-3 py-2">
+          <option value="CREATED_DESC">Najnowsze</option>
+          <option value="CREATED_ASC">Najstarsze</option>
+          <option value="PRICE_DESC">Cena ⬆</option>
+          <option value="PRICE_ASC">Cena ⬇</option>
+        </select>
+
+        <select value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="border rounded px-3 py-2">
+          <option value={8}>8</option>
+          <option value={12}>12</option>
+          <option value={24}>24</option>
+        </select>
+
         <button
-          onClick={create}
-          className="rounded bg-black text-white px-4 py-2"
+          onClick={applyFilters}
+          className="bg-black text-white rounded px-3 py-2 disabled:opacity-50"
+          disabled={loadingRef.current}
         >
-          + Dodaj produkt
+          Zastosuj filtry
         </button>
+      </section>
 
-        <label className="px-3 py-2 border rounded cursor-pointer">
-          <input ref={inputRef} type="file" multiple hidden onChange={onFiles} />
-          Dodaj zdjęcia do wybranego
-        </label>
+      {/* quick-filters */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <div className="text-sm mb-1">Marki</div>
+          <div className="flex flex-wrap gap-2">
+            {(facets.brands ?? []).map((b) => (
+              <button
+                key={b}
+                onClick={() => setBrands((arr) => toggle(arr, b))}
+                className={`px-2 py-1 rounded border ${
+                  brands.includes(b) ? 'bg-black text-white' : 'bg-white'
+                }`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        {selected && <span className="text-sm text-gray-500">Wybrany: {selected.title}</span>}
-      </div>
+        <div>
+          <div className="text-sm mb-1">Rozmiary</div>
+          <div className="flex flex-wrap gap-2">
+            {(facets.sizes ?? []).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSizes((arr) => toggle(arr, s))}
+                className={`px-2 py-1 rounded border ${
+                  sizes.includes(s) ? 'bg-black text-white' : 'bg-white'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      {loading && <div>Ładowanie…</div>}
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            value={condition ?? ''}
+            onChange={(e) => setCondition(e.target.value || null)}
+            className="border rounded px-3 py-2"
+          >
+            <option value="">Stan — dowolny</option>
+            {(facets.conditions ?? []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {items.map(p => {
-          const ph = p.photos.find(x=>x.isFront) ?? p.photos[0];
-          return (
-            <div
-              key={p.id}
-              onClick={() => setSelected(p)}
-              className={`border rounded p-2 ${selected?.id===p.id?'ring-2 ring-blue-500':''} cursor-pointer`}
-            >
-              <div className="aspect-square bg-gray-100 rounded mb-2 overflow-hidden">
-                {ph ? <img src={ph.url} className="w-full h-full object-cover" /> : <div className="flex h-full items-center justify-center text-gray-400">brak zdjęć</div>}
-              </div>
-              <div className="text-sm font-medium">{p.title}</div>
-              <div className="text-xs text-gray-500">{p.status}</div>
+          <select
+            value={status}
+            onChange={(e) => setStatus((e.target.value || '') as any)}
+            className="border rounded px-3 py-2"
+          >
+            <option value="">Status — dowolny</option>
+            {(facets.statuses ?? []).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
 
-              {p.photos.length>0 && (
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {p.photos.map(pic => (
-                    <div key={pic.id} className="relative">
-                      <img src={pic.url} className={`w-14 h-14 object-cover rounded ${pic.isFront?'ring-2 ring-blue-500':''}`} />
-                      <div className="flex gap-1 mt-1">
-                        <button className="text-xs underline" onClick={(e)=>{e.stopPropagation(); setFront(p, pic.id);}}>front</button>
-                        <button className="text-xs text-red-600 underline" onClick={(e)=>{e.stopPropagation(); removePhoto(p, pic.id);}}>usuń</button>
-                      </div>
-                    </div>
-                  ))}
+      {/* LISTA */}
+      <section className="space-y-3">
+        <div className="text-sm text-gray-600">
+          Razem: {total} • Strona {page}/{lastPage}
+        </div>
+
+        <ul className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {items.map((p) => {
+            const img = p.photos.find((ph) => ph.isFront) ?? p.photos[0];
+            return (
+              <li key={p.id} className="border rounded-xl overflow-hidden">
+                {img ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={img.url} alt={p.title} className="w-full h-48 object-cover" />
+                ) : (
+                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center">brak zdjęcia</div>
+                )}
+                <div className="p-3 space-y-1">
+                  <div className="font-medium line-clamp-2">{p.title}</div>
+                  <div className="text-sm text-gray-600">
+                    {p.brand ?? '-'} • {p.size ?? '-'} • {p.condition ?? '-'}
+                  </div>
+                  <div className="text-sm">
+                    {Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format((p.priceCents ?? 0) / 100)}
+                  </div>
+                  <div className="text-xs text-gray-500">{p.status}</div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {page < lastPage && (
+          <div className="flex justify-center">
+            <button
+              onClick={() => loadProducts('append')}
+              className="px-4 py-2 border rounded"
+              disabled={loadingRef.current}
+            >
+              Załaduj więcej
+            </button>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
