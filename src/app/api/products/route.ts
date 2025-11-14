@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import type { Prisma, ProductStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import {
+  DEFAULT_PRODUCT_STATUS,
+  ensureProductStatus,
+  isProductStatus,
+  type ProductStatus,
+} from "@/lib/product-status";
 
 /* -------- helpers -------- */
 
@@ -53,8 +59,12 @@ export async function GET(req: Request) {
     if (brands.length) AND.push({ brand: { in: brands } });
     if (sizes.length) AND.push({ size: { in: sizes } });
     if (conditions.length) AND.push({ condition: { in: conditions } });
-    if (statuses.length)
-      AND.push({ status: { in: statuses as unknown as ProductStatus[] } });
+    if (statuses.length) {
+      const allowed = statuses.filter(isProductStatus);
+      if (allowed.length) {
+        AND.push({ status: { in: allowed } });
+      }
+    }
 
     const where: Prisma.ProductWhereInput = AND.length ? { AND } : {};
 
@@ -124,9 +134,10 @@ export async function GET(req: Request) {
       { total, page, lastPage, limit, items, facets, status: 200 },
       { status: 200 }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Server error';
     return NextResponse.json(
-      { error: err?.message ?? "Server error", status: 500 },
+      { error: message, status: 500 },
       { status: 500 }
     );
   }
@@ -155,7 +166,7 @@ export async function POST(req: Request) {
         size: body.size ?? "",
         condition: body.condition ?? "",
         priceCents: body.priceCents ?? 0,
-        status: (body.status as ProductStatus) ?? ("NA_MAGAZYNIE" as ProductStatus),
+        status: ensureProductStatus(body.status, DEFAULT_PRODUCT_STATUS),
         notes: body.notes ?? null,
         sku: body.sku ?? null,
       },
@@ -165,9 +176,10 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(created, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Validation error';
     return NextResponse.json(
-      { error: err?.message ?? "Validation error" },
+      { error: message },
       { status: 400 }
     );
   }

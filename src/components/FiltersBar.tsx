@@ -45,7 +45,11 @@ export default function FiltersBar({
   }
   function toggleCsv(csv: string, v: string): string {
     const set = csvToSet(csv);
-    set.has(v) ? set.delete(v) : set.add(v);
+    if (set.has(v)) {
+      set.delete(v);
+    } else {
+      set.add(v);
+    }
     return Array.from(set).join(",");
   }
 

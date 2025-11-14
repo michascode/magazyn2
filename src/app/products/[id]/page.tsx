@@ -1,9 +1,11 @@
+/* eslint-disable @next/next/no-img-element */
 // src/app/products/[id]/page.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/format';
+import { PRODUCT_STATUSES, ensureProductStatus } from '@/lib/product-status';
 
 type Photo = { id: string; url: string; isFront: boolean };
 type Product = {
@@ -18,13 +20,6 @@ type Product = {
   photos: Photo[];
 };
 
-const STATUSES = [
-  'NA_MAGAZYNIE',
-  'WYSTAWIONE',
-  'ZAREZERWOWANE',
-  'SPRZEDANE',
-  'ARCHIWUM',
-];
 
 export default function ProductPage() {
   const params = useParams<{ id: string }>();
@@ -40,7 +35,7 @@ export default function ProductPage() {
   const [brand, setBrand] = useState('');
   const [size, setSize] = useState('');
   const [condition, setCondition] = useState('');
-  const [status, setStatus] = useState(STATUSES[0]);
+  const [status, setStatus] = useState(PRODUCT_STATUSES[0]);
   const [price, setPrice] = useState('0');
   const [notes, setNotes] = useState('');
 
@@ -56,11 +51,12 @@ export default function ProductPage() {
       setBrand(data.brand ?? '');
       setSize(data.size ?? '');
       setCondition(data.condition ?? '');
-      setStatus(data.status ?? STATUSES[0]);
+      setStatus(ensureProductStatus(data.status));
       setPrice(String((data.priceCents ?? 0) / 100));
       setNotes(data.notes ?? '');
-    } catch (e: any) {
-      setErr(e.message ?? 'Błąd');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd';
+      setErr(message);
     } finally {
       setLoading(false);
     }
@@ -91,8 +87,9 @@ export default function ProductPage() {
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as Product;
       setProduct(data);
-    } catch (e: any) {
-      alert(e.message ?? 'Błąd zapisu');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd zapisu';
+      alert(message);
     } finally {
       setBusy(false);
     }
@@ -106,8 +103,9 @@ export default function ProductPage() {
       const res = await fetch(`/api/products/${product.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       router.push('/');
-    } catch (e: any) {
-      alert(e.message ?? 'Błąd');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd';
+      alert(message);
     } finally {
       setBusy(false);
     }
@@ -122,8 +120,9 @@ export default function ProductPage() {
       const res = await fetch(`/api/products/${product.id}/photos`, { method: 'POST', body: fd });
       if (!res.ok) throw new Error(await res.text());
       await load();
-    } catch (e: any) {
-      alert(e.message ?? 'Błąd uploadu');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd uploadu';
+      alert(message);
     } finally {
       setBusy(false);
     }
@@ -140,8 +139,9 @@ export default function ProductPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       await load();
-    } catch (e: any) {
-      alert(e.message ?? 'Błąd');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd';
+      alert(message);
     } finally {
       setBusy(false);
     }
@@ -157,8 +157,9 @@ export default function ProductPage() {
       });
       if (!res.ok) throw new Error(await res.text());
       await load();
-    } catch (e: any) {
-      alert(e.message ?? 'Błąd');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd';
+      alert(message);
     } finally {
       setBusy(false);
     }
@@ -207,7 +208,7 @@ export default function ProductPage() {
             <label className="block">
               <span className="text-sm">Status</span>
               <select className="mt-1 w-full border rounded px-3 py-2" value={status} onChange={(e) => setStatus(e.target.value)}>
-                {STATUSES.map((s) => (
+                {PRODUCT_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>

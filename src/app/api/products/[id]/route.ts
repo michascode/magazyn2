@@ -1,15 +1,7 @@
-// src/app/api/products/[id]/route.ts
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-
-const STATUS_SET = new Set([
-  'NA_MAGAZYNIE',
-  'WYSTAWIONE',
-  'ZAREZERWOWANE',
-  'SPRZEDANE',
-  'ARCHIWUM',
-]);
-const safeStatus = (v: string | null) => (v && STATUS_SET.has(v) ? v : undefined);
+import { optionalProductStatus } from '@/lib/product-status';
+import type { Prisma } from '@prisma/client';
 
 /** GET /api/products/:id */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -29,11 +21,20 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 /** PATCH /api/products/:id */
+type PatchBody = Partial<{
+  title: string;
+  brand: string | null;
+  size: string | null;
+  condition: string | null;
+  priceCents: number;
+  status: string | null;
+  notes: string | null;
+}>;
+
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const body = await req.json().catch(() => ({} as any));
-
-  const data: any = {
+   const body = (await req.json().catch(() => ({}))) as PatchBody;
+    const data: Prisma.ProductUpdateInput = {
     title: body.title ?? undefined,
     brand: body.brand ?? undefined,
     size: body.size ?? undefined,
@@ -42,7 +43,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       typeof body.priceCents === 'number'
         ? Math.max(0, Math.floor(body.priceCents))
         : undefined,
-    status: safeStatus(body.status ?? null),
+          status: optionalProductStatus(body.status ?? null),
     notes: body.notes ?? undefined,
   };
 
