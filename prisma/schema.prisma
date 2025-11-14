@@ -17,6 +17,9 @@ model Product {
   priceCents Int      @default(0)
   sku        String?  @unique
   notes      String?
+  dimensionA String?
+  dimensionB String?
+  dimensionC String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   photos     Photo[]

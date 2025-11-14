@@ -3,7 +3,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/format';
 import {
   DEFAULT_PRODUCT_STATUS,
@@ -57,7 +56,21 @@ type DetailedProduct = {
   priceCents: number;
   notes: string | null;
   photos: UiPhoto[];
+  dimensionA: string | null;
+  dimensionB: string | null;
+  dimensionC: string | null;
 };
+
+const toUiProduct = (data: DetailedProduct): UIProduct => ({
+  id: data.id,
+  title: data.title,
+  brand: data.brand,
+  size: data.size,
+  condition: data.condition,
+  status: data.status,
+  priceCents: data.priceCents,
+  photos: data.photos,
+});
 
 const getUrl = () =>
   typeof window !== 'undefined'
@@ -105,7 +118,6 @@ const parsePriceInput = (value: string): number => {
 };
 
 export default function Page() {
-  const router = useRouter();
 
   const initial = useMemo(() => {
     const u = getUrl();
@@ -145,6 +157,8 @@ export default function Page() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<UiPhoto | null>(null);
 
   const [titleInput, setTitleInput] = useState('');
   const [brandInput, setBrandInput] = useState('');
@@ -153,8 +167,68 @@ export default function Page() {
   const [statusInput, setStatusInput] = useState(PRODUCT_STATUSES[0]);
   const [priceInput, setPriceInput] = useState('0');
   const [notesInput, setNotesInput] = useState('');
+  const [dimensionAInput, setDimensionAInput] = useState('');
+  const [dimensionBInput, setDimensionBInput] = useState('');
+  const [dimensionCInput, setDimensionCInput] = useState('');
 
   const loadingRef = useRef(false);
+  const selectedIdRef = useRef<string | null>(null);
+
+  const applySelectedData = useCallback(
+    (data: DetailedProduct) => {
+      setSelected(data);
+      setTitleInput(data.title ?? '');
+      setBrandInput(data.brand ?? '');
+      setSizeInput(data.size ?? '');
+      setConditionInput(data.condition ?? '');
+      setStatusInput(ensureProductStatus(data.status));
+      setPriceInput(String((data.priceCents ?? 0) / 100));
+      setNotesInput(data.notes ?? '');
+      setDimensionAInput(data.dimensionA ?? '');
+      setDimensionBInput(data.dimensionB ?? '');
+      setDimensionCInput(data.dimensionC ?? '');
+      setPreviewPhoto(null);
+      setItems((prev) => {
+        const nextItem = toUiProduct(data);
+        return prev.some((item) => item.id === data.id)
+          ? prev.map((item) => (item.id === data.id ? nextItem : item))
+          : [nextItem, ...prev];
+      });
+    },
+    []
+  );
+
+  const fetchProductDetail = useCallback(async (id: string) => {
+    const res = await fetch(`/api/products/${id}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(await res.text());
+    return (await res.json()) as DetailedProduct;
+  }, []);
+
+  const refreshSelected = useCallback(
+    async (id?: string, options?: { showLoader?: boolean }) => {
+      const targetId = id ?? selectedIdRef.current;
+      if (!targetId) return;
+      const showLoader = options?.showLoader ?? true;
+      if (showLoader) {
+        setDetailLoading(true);
+        setDetailError(null);
+      }
+      try {
+        const data = await fetchProductDetail(targetId);
+        if (selectedIdRef.current !== targetId) return;
+        applySelectedData(data);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Błąd podczas pobierania produktu';
+        setDetailError(message);
+      } finally {
+        if (showLoader && selectedIdRef.current === targetId) {
+          setDetailLoading(false);
+        }
+      }
+    },
+    [fetchProductDetail, applySelectedData]
+  );
 
   const pushUrl = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -196,15 +270,13 @@ export default function Page() {
       setTotal(data.total);
       setLastPage(data.lastPage);
       setFacets(data.facets);
-      setSelectedId((prev) => {
-        if (prev && data.items.some((item) => item.id === prev)) {
-          return prev;
-        }
-        return data.items[0]?.id ?? null;
-      });
+      setSelectedId((prev) => prev ?? data.items[0]?.id ?? null);
       if (!data.items.length) {
         setSelected(null);
+        setPreviewPhoto(null);
       }
+    } catch (err: unknown) {
+    console.error('Błąd podczas pobierania listy produktów', err);
     } finally {
       loadingRef.current = false;
     }
@@ -216,44 +288,17 @@ export default function Page() {
   }, [pushUrl, fetchProducts]);
 
   useEffect(() => {
+    selectedIdRef.current = selectedId;
     if (!selectedId) {
       setSelected(null);
+      setPreviewPhoto(null);
+      setDetailError(null);
+      setDetailLoading(false);
       return;
     }
 
-    let cancelled = false;
-    setDetailLoading(true);
-    setDetailError(null);
-
-    fetch(`/api/products/${selectedId}`, { cache: 'no-store' })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text());
-        return (await res.json()) as DetailedProduct;
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setSelected(data);
-        setTitleInput(data.title ?? '');
-        setBrandInput(data.brand ?? '');
-        setSizeInput(data.size ?? '');
-        setConditionInput(data.condition ?? '');
-        setStatusInput(ensureProductStatus(data.status));
-        setPriceInput(String((data.priceCents ?? 0) / 100));
-        setNotesInput(data.notes ?? '');
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : 'Błąd podczas pobierania produktu';
-        setDetailError(message);
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId]);
+      void refreshSelected(selectedId);
+  }, [selectedId, refreshSelected]);
 
   const resetAndFetch = (updater?: () => void) => {
     updater?.();
@@ -271,23 +316,35 @@ export default function Page() {
   };
 
   async function createProduct() {
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: DEFAULT_PRODUCT_STATUS }),
-    });
-    if (!res.ok) {
-      alert(await res.text());
-      return;
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: DEFAULT_PRODUCT_STATUS }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created = (await res.json()) as DetailedProduct;
+      setSelectedId(created.id);
+      selectedIdRef.current = created.id;
+      applySelectedData(created);
+      await fetchProducts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Nie udało się utworzyć produktu';
+      alert(message);
     }
-    const p = (await res.json()) as { id: string };
-    router.push(`/products/${p.id}`);
   }
 
-  const frontPhoto = useMemo(
-    () => pickFrontPhoto(selected?.photos ?? []),
-    [selected]
-  );
+  const frontPhotoData = useMemo(() => {
+    if (!selected?.photos?.length) return null;
+    const front = selected.photos.find((photo) => photo.isFront);
+    if (front) return front;
+    const sorted = [...selected.photos].sort(
+      (a, b) => (a.order ?? 0) - (b.order ?? 0)
+    );
+    return sorted[0] ?? null;
+  }, [selected]);
+
+  const frontPhoto = frontPhotoData?.url ?? null;
 
   async function saveSelected() {
     if (!selectedId) return;
@@ -301,6 +358,9 @@ export default function Page() {
         status: statusInput,
         priceCents: parsePriceInput(priceInput),
         notes: notesInput || null,
+        dimensionA: dimensionAInput || null,
+        dimensionB: dimensionBInput || null,
+        dimensionC: dimensionCInput || null,
       };
       const res = await fetch(`/api/products/${selectedId}`, {
         method: 'PATCH',
@@ -309,30 +369,97 @@ export default function Page() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as DetailedProduct;
-      setSelected(data);
-      setStatusInput(ensureProductStatus(data.status));
-      setPriceInput(String((data.priceCents ?? 0) / 100));
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === data.id
-            ? {
-                ...item,
-                title: data.title,
-                brand: data.brand,
-                size: data.size,
-                condition: data.condition,
-                status: data.status,
-                priceCents: data.priceCents,
-                photos: data.photos,
-              }
-            : item
-        )
-      );
+      applySelectedData(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Błąd zapisu';
       alert(message);
     } finally {
       setSaveBusy(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!selectedId) return;
+    if (!confirm('Usunąć ten produkt?')) return;
+    setSaveBusy(true);
+    try {
+      const res = await fetch(`/api/products/${selectedId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await res.text());
+      setItems((prev) => prev.filter((item) => item.id !== selectedId));
+      setSelectedId(null);
+      selectedIdRef.current = null;
+      setSelected(null);
+      setPreviewPhoto(null);
+      await fetchProducts();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd usuwania produktu';
+      alert(message);
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  async function uploadPhotos(files: FileList | null) {
+    const targetId = selectedIdRef.current;
+    if (!targetId || !files?.length) return;
+    setPhotoBusy(true);
+    try {
+      await Promise.all(
+        Array.from(files).map(async (file) => {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await fetch(`/api/products/${targetId}/photos`, {
+            method: 'POST',
+            body: fd,
+          });
+          if (!res.ok) throw new Error(await res.text());
+        })
+      );
+      await refreshSelected(targetId, { showLoader: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd podczas dodawania zdjęć';
+      alert(message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function setPhotoAsFront(photoId: string) {
+    const targetId = selectedIdRef.current;
+    if (!targetId) return;
+    setPhotoBusy(true);
+    try {
+      const res = await fetch(`/api/products/${targetId}/photos/${photoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFront: true }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await refreshSelected(targetId, { showLoader: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Nie udało się ustawić zdjęcia głównego';
+      alert(message);
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function deletePhoto(photoId: string) {
+    const targetId = selectedIdRef.current;
+    if (!targetId) return;
+    if (!confirm('Usunąć to zdjęcie?')) return;
+    setPhotoBusy(true);
+    try {
+      const res = await fetch(`/api/products/${targetId}/photos/${photoId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await refreshSelected(targetId, { showLoader: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Błąd podczas usuwania zdjęcia';
+      alert(message);
+    } finally {
+      setPhotoBusy(false);
     }
   }
 
@@ -381,61 +508,69 @@ export default function Page() {
               <option value="PRICE_ASC">Cena ↑</option>
             </select>
 
-      <input
-              className="w-full max-w-xs rounded border border-gray-300 px-3 py-2"
-              placeholder="Statusy (CSV)"
+      <select
+              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2"
               value={statusCsv}
-              onChange={(e) => setStatusCsv(e.target.value)}
-              onBlur={() => resetAndFetch()}
-              list="facet-status"
-            />
-            <datalist id="facet-status">
+              onChange={(e) =>
+                resetAndFetch(() => setStatusCsv(e.target.value))
+              }
+              title="Status"
+            >
+              <option value="">Wszystkie statusy</option>
               {facets.statuses.map((s) => (
-                <option key={s} value={s} />
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
-            </datalist>
+            </select>
 
-            <input
-              className="w-full max-w-xs rounded border border-gray-300 px-3 py-2"
-              placeholder="Marki (CSV)"
+            <select
+              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2"
               value={brandsCsv}
-              onChange={(e) => setBrandsCsv(e.target.value)}
-              onBlur={() => resetAndFetch()}
-              list="facet-brands"
-            />
-            <datalist id="facet-brands">
+              onChange={(e) =>
+                resetAndFetch(() => setBrandsCsv(e.target.value))
+              }
+              title="Marka"
+            >
+              <option value="">Wszystkie marki</option>
               {facets.brands.map((b) => (
-                <option key={b} value={b} />
+                <option key={b} value={b}>
+                  {b}
+                </option>
               ))}
-            </datalist>
+            </select>
 
-            <input
-              className="w-full max-w-[10rem] rounded border border-gray-300 px-3 py-2"
-              placeholder="Rozmiary (CSV)"
+            <select
+              className="min-w-[10rem] rounded border border-gray-300 px-3 py-2"
               value={sizesCsv}
-              onChange={(e) => setSizesCsv(e.target.value)}
-              onBlur={() => resetAndFetch()}
-              list="facet-sizes"
-            />
-            <datalist id="facet-sizes">
-              {facets.sizes.map((b) => (
-                <option key={b} value={b} />
+              onChange={(e) =>
+                resetAndFetch(() => setSizesCsv(e.target.value))
+              }
+              title="Rozmiar"
+            >
+              <option value="">Wszystkie rozmiary</option>
+              {facets.sizes.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
               ))}
-            </datalist>
+            </select>
 
-            <input
-              className="w-full max-w-xs rounded border border-gray-300 px-3 py-2"
-              placeholder="Stany (CSV)"
+            <select
+              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2"
               value={conditionsCsv}
-              onChange={(e) => setConditionsCsv(e.target.value)}
-              onBlur={() => resetAndFetch()}
-              list="facet-conditions"
-            />
-            <datalist id="facet-conditions">
-              {facets.conditions.map((c) => (
-                <option key={c} value={c} />
+              onChange={(e) =>
+                resetAndFetch(() => setConditionsCsv(e.target.value))
+              }
+              title="Stan"
+            >
+              <option value="">Wszystkie stany</option>
+              {facets.conditions.map((condition) => (
+                <option key={condition} value={condition}>
+                  {condition}
+                </option>
               ))}
-            </datalist>
+            </select>
 
             <div className="ml-auto flex items-center gap-2">
               <button
@@ -569,37 +704,104 @@ export default function Page() {
 
               {selectedId && selected && !detailLoading && !detailError && (
                 <div className="grid gap-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div className="aspect-[4/5] overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
                       {frontPhoto ? (
-                        <img
-                          src={frontPhoto}
-                          alt={selected.title || 'Zdjęcie produktu'}
-                          className="h-full w-full object-cover"
-                        />
+                        <button
+                          type="button"
+                          className="h-full w-full"
+                          onClick={() => frontPhotoData && setPreviewPhoto(frontPhotoData)}
+                          title="Powiększ zdjęcie główne"
+                          disabled={photoBusy}
+                        >
+                          <img
+                            src={frontPhoto}
+                            alt={selected.title || 'Zdjęcie produktu'}
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
                       ) : (
                         <div className="flex h-full items-center justify-center text-sm text-gray-500">
                           Brak zdjęcia głównego
                         </div>
                       )}
                     </div>
-                    {!!selected.photos.length && (
-                      <div className="grid grid-cols-4 gap-2">
+
+                    <label
+                      className={`inline-flex items-center justify-center gap-2 rounded border border-dashed border-gray-300 px-3 py-2 text-sm font-medium ${
+                        photoBusy ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-gray-400'
+                      }`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={photoBusy}
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          void uploadPhotos(files);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                      <span>Dodaj zdjęcia</span>
+                    </label>
+
+                    {selected.photos.length ? (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {selected.photos.map((photo) => (
                           <div
                             key={photo.id}
-                            className={`overflow-hidden rounded border ${
+                            className={`relative overflow-hidden rounded border ${
                               photo.isFront ? 'border-black' : 'border-gray-200'
                             }`}
                           >
-                            <img
-                              src={photo.url}
-                              alt="Miniatura"
-                              className="h-20 w-full object-cover"
-                            />
+                            <button
+                              type="button"
+                              className="block h-full w-full focus:outline-none"
+                              onClick={() => setPreviewPhoto(photo)}
+                              title="Powiększ zdjęcie"
+                            >
+                              <img
+                                src={photo.url}
+                                alt="Miniatura"
+                                className="h-28 w-full object-cover"
+                              />
+                            </button>
+                            <div className="absolute inset-x-0 bottom-1 flex justify-center gap-2 px-2">
+                              {!photo.isFront && (
+                                <button
+                                  type="button"
+                                  className="rounded bg-white/90 px-2 py-1 text-[10px]"
+                                  onClick={() => void setPhotoAsFront(photo.id)}
+                                  disabled={photoBusy}
+                                >
+                                  Ustaw główne
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="rounded bg-white/90 px-2 py-1 text-[10px]"
+                                onClick={() => void deletePhoto(photo.id)}
+                                disabled={photoBusy}
+                              >
+                                Usuń
+                              </button>
+                            </div>
+                            {photo.isFront && (
+                              <span className="absolute left-1 top-1 rounded bg-black px-2 py-1 text-[10px] font-semibold text-white">
+                                Główne
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
+                      ) : (
+                      <p className="text-sm text-gray-500">Brak dodanych zdjęć.</p>
+                    )}
+
+                    {photoBusy && (
+                      <p className="text-xs text-gray-500">Przetwarzanie zdjęć…</p>
                     )}
                   </div>
 
@@ -668,6 +870,34 @@ export default function Page() {
                           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
                           value={priceInput}
                           onChange={(e) => setPriceInput(e.target.value)}
+                          inputMode="decimal"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="block text-sm">
+                        <span className="text-gray-600">Wymiar A</span>
+                        <input
+                          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                          value={dimensionAInput}
+                          onChange={(e) => setDimensionAInput(e.target.value)}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="text-gray-600">Wymiar B</span>
+                        <input
+                          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                          value={dimensionBInput}
+                          onChange={(e) => setDimensionBInput(e.target.value)}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="text-gray-600">Wymiar C</span>
+                        <input
+                          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                          value={dimensionCInput}
+                          onChange={(e) => setDimensionCInput(e.target.value)}
                         />
                       </label>
                     </div>
@@ -681,13 +911,21 @@ export default function Page() {
                       />
                     </label>
 
-      <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-3">
                       <button
                         type="submit"
                         className="rounded bg-black px-4 py-2 text-sm font-medium text-white hover:bg-black/90 disabled:opacity-50"
-                        disabled={saveBusy}
+                        disabled={saveBusy || photoBusy}
                       >
                         Zapisz zmiany
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-red-500 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        onClick={() => void deleteSelected()}
+                        disabled={saveBusy || photoBusy}
+                      >
+                        Usuń produkt
                       </button>
                     </div>
                   </form>
@@ -697,6 +935,29 @@ export default function Page() {
           </section>
         </div>
       </div>
+      {previewPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-4xl">
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded bg-black/60 px-3 py-1 text-sm font-medium text-white hover:bg-black/80"
+              onClick={() => setPreviewPhoto(null)}
+            >
+              Zamknij
+            </button>
+            <div className="max-h-[80vh] overflow-hidden rounded-lg bg-white p-2">
+              <img
+                src={previewPhoto.url}
+                alt="Podgląd zdjęcia"
+                className="max-h-[70vh] w-full rounded object-contain"
+              />
+            </div>
+            <div className="mt-2 text-center text-sm text-white">
+              {previewPhoto.isFront ? 'Zdjęcie główne' : 'Zdjęcie produktu'}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -157,6 +157,9 @@ export async function POST(req: Request) {
       status: ProductStatus;
       notes: string | null;
       sku: string | null;
+      dimensionA: string | null;
+      dimensionB: string | null;
+      dimensionC: string | null;
     }>;
 
     const created = await prisma.product.create({
@@ -169,6 +172,9 @@ export async function POST(req: Request) {
         status: ensureProductStatus(body.status, DEFAULT_PRODUCT_STATUS),
         notes: body.notes ?? null,
         sku: body.sku ?? null,
+        dimensionA: body.dimensionA ?? null,
+        dimensionB: body.dimensionB ?? null,
+        dimensionC: body.dimensionC ?? null,
       },
       include: {
         photos: true,
