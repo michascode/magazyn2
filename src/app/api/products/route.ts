@@ -99,51 +99,43 @@ export async function GET(req: Request) {
         prisma.product.count({ where }),
         prisma.product.findMany({
           where,
-          distinct: ["brand"],
           select: { brand: true },
         }),
         prisma.product.findMany({
           where,
-          distinct: ["size"],
           select: { size: true },
         }),
         prisma.product.findMany({
           where,
-          distinct: ["condition"],
           select: { condition: true },
         }),
         prisma.product.findMany({
           where,
-          distinct: ["shot"],
           select: { shot: true },
         }),
         prisma.product.findMany({
           where,
-          distinct: ["status"],
           select: { status: true },
         }),
       ]);
 
+      const toSortedUnique = (values: (string | null | undefined)[]) => {
+      const unique = new Set<string>();
+      for (const value of values) {
+        if (typeof value === "string" && value.length) {
+          unique.add(value);
+        }
+      }
+      return Array.from(unique).sort((a, b) => a.localeCompare(b));
+    };
+
     const facets = {
-      brands: brandRows
-        .map((r) => r.brand!)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-      sizes: sizeRows
-        .map((r) => r.size!)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-      conditions: conditionRows
-        .map((r) => r.condition!)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-      shots: shotRows
-        .map((r) => r.shot!)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b)),
-      statuses: Array.from(new Set(statusRows.map((r) => r.status))).sort((a, b) =>
-        a.localeCompare(b)
-      ),
+      brands: toSortedUnique(brandRows.map((r) => r.brand)),
+      sizes: toSortedUnique(sizeRows.map((r) => r.size)),
+      conditions: toSortedUnique(conditionRows.map((r) => r.condition)),
+      shots: toSortedUnique(shotRows.map((r) => r.shot)),
+      statuses: toSortedUnique(
+        statusRows.map((r) => (isProductStatus(r.status) ? r.status : null))
     };
 
     const lastPage = Math.max(1, Math.ceil(total / limit));
@@ -153,7 +145,7 @@ export async function GET(req: Request) {
       { status: 200 }
     );
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Server error';
+    const message = err instanceof Error ? err.message : "Server error";
     return NextResponse.json(
       { error: message, status: 500 },
       { status: 500 }
@@ -203,7 +195,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(created, { status: 201 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Validation error';
+    const message = err instanceof Error ? err.message : "Validation error";
     return NextResponse.json(
       { error: message },
       { status: 400 }
