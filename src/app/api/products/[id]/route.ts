@@ -29,6 +29,7 @@ type PatchBody = Partial<{
   brand: string | null;
   size: string | null;
   condition: string | null;
+  shot: string | null;
   priceCents: number;
   status: string | null;
   notes: string | null;
@@ -46,6 +47,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     brand: body.brand ?? undefined,
     size: body.size ?? undefined,
     condition: body.condition ?? undefined,
+    shot: body.shot ?? undefined,
     priceCents:
       typeof body.priceCents === 'number'
         ? Math.max(0, Math.floor(body.priceCents))
@@ -78,5 +80,5 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   await prisma.product.delete({ where: { id } });
 
   return new NextResponse(null, { status: 204 });
-  
+
 }

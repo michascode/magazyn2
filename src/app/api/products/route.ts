@@ -41,6 +41,7 @@ export async function GET(req: Request) {
     const brands = csv(url.searchParams.get("brands"));
     const sizes = csv(url.searchParams.get("sizes"));
     const conditions = csv(url.searchParams.get("conditions"));
+    const shots = csv(url.searchParams.get("shots"));
     const statuses = csv(url.searchParams.get("status"));
 
     const AND: Prisma.ProductWhereInput[] = [];
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
     if (brands.length) AND.push({ brand: { in: brands } });
     if (sizes.length) AND.push({ size: { in: sizes } });
     if (conditions.length) AND.push({ condition: { in: conditions } });
+    if (shots.length) AND.push({ shot: { in: shots } });
     if (statuses.length) {
       const allowed = statuses.filter(isProductStatus);
       if (allowed.length) {
@@ -70,7 +72,7 @@ export async function GET(req: Request) {
 
     const orderBy = SORT_MAP[sortKey] ?? SORT_MAP.CREATED_DESC;
 
-    const [items, total, brandRows, sizeRows, conditionRows, statusRows] =
+    const [items, total, brandRows, sizeRows, conditionRows, shotRows, statusRows] =
       await Promise.all([
         prisma.product.findMany({
           where,
@@ -115,6 +117,12 @@ export async function GET(req: Request) {
         }),
         prisma.product.findMany({
           where,
+          distinct: ["shot"],
+          select: { shot: true },
+          orderBy: { shot: "asc" },
+        }),
+        prisma.product.findMany({
+          where,
           distinct: ["status"],
           select: { status: true },
           orderBy: { status: "asc" },
@@ -125,6 +133,7 @@ export async function GET(req: Request) {
       brands: brandRows.map((r) => r.brand!).filter(Boolean),
       sizes: sizeRows.map((r) => r.size!).filter(Boolean),
       conditions: conditionRows.map((r) => r.condition!).filter(Boolean),
+      shots: shotRows.map((r) => r.shot!).filter(Boolean),
       statuses: Array.from(new Set(statusRows.map((r) => r.status))),
     };
 
@@ -153,6 +162,7 @@ export async function POST(req: Request) {
       brand: string;
       size: string;
       condition: string;
+      shot: string | null;
       priceCents: number;
       status: ProductStatus;
       notes: string | null;
@@ -168,6 +178,7 @@ export async function POST(req: Request) {
         brand: body.brand ?? "",
         size: body.size ?? "",
         condition: body.condition ?? "",
+        shot: body.shot ?? null,
         priceCents: body.priceCents ?? 0,
         status: ensureProductStatus(body.status, DEFAULT_PRODUCT_STATUS),
         notes: body.notes ?? null,
