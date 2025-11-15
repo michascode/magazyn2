@@ -101,40 +101,49 @@ export async function GET(req: Request) {
           where,
           distinct: ["brand"],
           select: { brand: true },
-          orderBy: { brand: "asc" },
         }),
         prisma.product.findMany({
           where,
           distinct: ["size"],
           select: { size: true },
-          orderBy: { size: "asc" },
         }),
         prisma.product.findMany({
           where,
           distinct: ["condition"],
           select: { condition: true },
-          orderBy: { condition: "asc" },
         }),
         prisma.product.findMany({
           where,
           distinct: ["shot"],
           select: { shot: true },
-          orderBy: { shot: "asc" },
         }),
         prisma.product.findMany({
           where,
           distinct: ["status"],
           select: { status: true },
-          orderBy: { status: "asc" },
         }),
       ]);
 
     const facets = {
-      brands: brandRows.map((r) => r.brand!).filter(Boolean),
-      sizes: sizeRows.map((r) => r.size!).filter(Boolean),
-      conditions: conditionRows.map((r) => r.condition!).filter(Boolean),
-      shots: shotRows.map((r) => r.shot!).filter(Boolean),
-      statuses: Array.from(new Set(statusRows.map((r) => r.status))),
+      brands: brandRows
+        .map((r) => r.brand!)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+      sizes: sizeRows
+        .map((r) => r.size!)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+      conditions: conditionRows
+        .map((r) => r.condition!)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+      shots: shotRows
+        .map((r) => r.shot!)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+      statuses: Array.from(new Set(statusRows.map((r) => r.status))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
     };
 
     const lastPage = Math.max(1, Math.ceil(total / limit));
