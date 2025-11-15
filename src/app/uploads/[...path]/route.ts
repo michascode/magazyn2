@@ -4,10 +4,11 @@ import path from "path";
 
 export async function GET(
   _req: Request,
-  ctx: { params: { path: string[] } }
+  ctx: { params: Promise<{ path: string[] }> }
 ) {
   try {
-    const rel = ctx.params.path?.join("/") ?? "";
+    const { path: segments } = await ctx.params;
+    const rel = segments?.join("/") ?? "";
     const safeRel = path.normalize(rel).replace(/^(\.\.(\/|\\|$))+/g, "");
     const abs = path.join(process.cwd(), "uploads", safeRel);
 

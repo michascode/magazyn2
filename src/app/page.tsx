@@ -8,6 +8,7 @@ import {
   PRODUCT_STATUSES,
   ensureProductStatus,
   optionalProductStatus,
+  type ProductStatus,
 } from '@/lib/product-status';
 
 type UiPhoto = {
@@ -173,7 +174,9 @@ export default function Page() {
   const [sizeInput, setSizeInput] = useState('');
   const [conditionInput, setConditionInput] = useState('');
   const [shotInput, setShotInput] = useState('');
-  const [statusInput, setStatusInput] = useState(PRODUCT_STATUSES[0]);
+  const [statusInput, setStatusInput] = useState<ProductStatus>(
+    PRODUCT_STATUSES[0],
+  );
   const [priceInput, setPriceInput] = useState('0');
   const [notesInput, setNotesInput] = useState('');
   const [dimensionAInput, setDimensionAInput] = useState('');

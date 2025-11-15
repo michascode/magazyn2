@@ -119,7 +119,7 @@ export async function GET(req: Request) {
         }),
       ]);
 
-      const toSortedUnique = (values: (string | null | undefined)[]) => {
+    const toSortedUnique = (values: (string | null | undefined)[]) => {
       const unique = new Set<string>();
       for (const value of values) {
         if (typeof value === "string" && value.length) {
@@ -136,6 +136,7 @@ export async function GET(req: Request) {
       shots: toSortedUnique(shotRows.map((r) => r.shot)),
       statuses: toSortedUnique(
         statusRows.map((r) => (isProductStatus(r.status) ? r.status : null))
+      ),
     };
 
     const lastPage = Math.max(1, Math.ceil(total / limit));
