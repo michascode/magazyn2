@@ -1,7 +1,17 @@
-import { NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
-import prisma from '@/lib/prisma';
-import { optionalProductStatus } from '@/lib/product-status';
+import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { optionalProductStatus } from "@/lib/product-status";
+
+const SUPPORTS_SHOT_FIELD =
+  "shot" in Prisma.ProductScalarFieldEnum &&
+  typeof Prisma.ProductScalarFieldEnum.shot === "string";
+
+if (!SUPPORTS_SHOT_FIELD) {
+  console.warn(
+    "Prisma client missing Product.shot field - run `npm install` or `npx prisma generate` to refresh the client."
+  );
+}
 
 /** GET /api/products/:id */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -47,7 +57,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     brand: body.brand ?? undefined,
     size: body.size ?? undefined,
     condition: body.condition ?? undefined,
-    shot: body.shot ?? undefined,
+    ...(SUPPORTS_SHOT_FIELD ? { shot: body.shot ?? undefined } : {}),
     priceCents:
       typeof body.priceCents === 'number'
         ? Math.max(0, Math.floor(body.priceCents))

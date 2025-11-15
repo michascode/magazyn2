@@ -46,6 +46,7 @@ type ApiRes = {
   limit: number;
   items: UIProduct[];
   facets: Facets;
+  supportsShot: boolean;
 };
 
 type DetailedProduct = {
@@ -160,6 +161,7 @@ export default function Page() {
     shots: [],
     statuses: [],
   });
+  const [supportsShot, setSupportsShot] = useState(true);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<DetailedProduct | null>(null);
@@ -285,6 +287,10 @@ export default function Page() {
       setTotal(data.total);
       setLastPage(data.lastPage);
       setFacets(data.facets);
+      setSupportsShot(data.supportsShot ?? true);
+      if (data.supportsShot === false && shotsCsv) {
+        setShotsCsv("");
+      }
       setSelectedId((prev) => prev ?? data.items[0]?.id ?? null);
       if (!data.items.length) {
         setSelected(null);
@@ -502,6 +508,13 @@ export default function Page() {
           <div className="mb-3 flex items-center gap-2">
             <h2 className="text-lg font-semibold">Filtry</h2>
           </div>
+          {!supportsShot && (
+            <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Obsługa filtra „Rzut” wymaga odświeżenia klienta Prisma. Uruchom
+              polecenie <code>npm install</code> albo <code>npx prisma generate</code>,
+              a następnie ponownie załaduj stronę.
+            </div>
+          )}
           <div className="flex flex-wrap gap-3">
             <input
               className="w-full max-w-xs rounded border border-gray-300 px-3 py-2"
@@ -590,10 +603,11 @@ export default function Page() {
             </select>
 
             <select
-              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2"
+              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
               value={shotsCsv}
               onChange={(e) => resetAndFetch(() => setShotsCsv(e.target.value))}
               title="Rzut"
+              disabled={!supportsShot}
             >
               <option value="">Wszystkie rzuty</option>
               {facets.shots.map((shot) => (
