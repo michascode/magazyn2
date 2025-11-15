@@ -1,5 +1,16 @@
-import 'dotenv/config';
-import { defineConfig, env } from "prisma/config";
+import "dotenv/config";
+import { defineConfig } from "prisma/config";
+
+const databaseUrl =
+  process.env.DATABASE_URL ??
+  "postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public";
+
+if (!process.env.DATABASE_URL) {
+  console.warn(
+    "DATABASE_URL is not set; Prisma will use a placeholder connection string. Set DATABASE_URL to connect to a real database."
+  );
+}
+
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -8,6 +19,6 @@ export default defineConfig({
   },
   engine: "classic",
   datasource: {
-    url: env("DATABASE_URL"),
+    url: databaseUrl,
   },
 });
