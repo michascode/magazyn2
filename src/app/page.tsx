@@ -25,6 +25,7 @@ type UIProduct = {
   brand: string | null;
   size: string | null;
   condition: string | null;
+  rzut: string | null;
   status: string;
   priceCents: number;
   photos: UiPhoto[];
@@ -34,6 +35,7 @@ type Facets = {
   brands: string[];
   sizes: string[];
   conditions: string[];
+  rzuty: string[];
   statuses: string[];
 };
 
@@ -52,6 +54,7 @@ type DetailedProduct = {
   brand: string | null;
   size: string | null;
   condition: string | null;
+  rzut: string | null;
   status: string;
   priceCents: number;
   notes: string | null;
@@ -67,6 +70,7 @@ const toUiProduct = (data: DetailedProduct): UIProduct => ({
   brand: data.brand,
   size: data.size,
   condition: data.condition,
+  rzut: data.rzut,
   status: data.status,
   priceCents: data.priceCents,
   photos: data.photos,
@@ -84,6 +88,7 @@ const buildApiUrl = (q: {
   brandsCsv: string;
   sizesCsv: string;
   conditionsCsv: string;
+  rzutyCsv: string;
   page: number;
   limit: number;
 }) => {
@@ -97,6 +102,7 @@ const buildApiUrl = (q: {
   u.searchParams.set('brands', q.brandsCsv);
   u.searchParams.set('sizes', q.sizesCsv);
   u.searchParams.set('conditions', q.conditionsCsv);
+  u.searchParams.set('rzuty', q.rzutyCsv);
   u.searchParams.set('page', String(q.page));
   u.searchParams.set('limit', String(q.limit));
   return u;
@@ -128,6 +134,7 @@ export default function Page() {
       brandsCsv: u.searchParams.get('brands') ?? '',
       sizesCsv: u.searchParams.get('sizes') ?? '',
       conditionsCsv: u.searchParams.get('conditions') ?? '',
+      rzutyCsv: u.searchParams.get('rzuty') ?? '',
       page: Math.max(1, Number(u.searchParams.get('page') ?? '1')),
       limit: Math.min(100, Math.max(1, Number(u.searchParams.get('limit') ?? '12'))),
     };
@@ -139,6 +146,7 @@ export default function Page() {
   const [brandsCsv, setBrandsCsv] = useState(initial.brandsCsv);
   const [sizesCsv, setSizesCsv] = useState(initial.sizesCsv);
   const [conditionsCsv, setConditionsCsv] = useState(initial.conditionsCsv);
+  const [rzutyCsv, setRzutyCsv] = useState(initial.rzutyCsv);
   const [page, setPage] = useState(initial.page);
   const limit = initial.limit;
 
@@ -149,6 +157,7 @@ export default function Page() {
     brands: [],
     sizes: [],
     conditions: [],
+    rzuty: [],
     statuses: [],
   });
 
@@ -164,6 +173,7 @@ export default function Page() {
   const [brandInput, setBrandInput] = useState('');
   const [sizeInput, setSizeInput] = useState('');
   const [conditionInput, setConditionInput] = useState('');
+  const [rzutInput, setRzutInput] = useState('');
   const [statusInput, setStatusInput] = useState(PRODUCT_STATUSES[0]);
   const [priceInput, setPriceInput] = useState('0');
   const [notesInput, setNotesInput] = useState('');
@@ -181,6 +191,7 @@ export default function Page() {
       setBrandInput(data.brand ?? '');
       setSizeInput(data.size ?? '');
       setConditionInput(data.condition ?? '');
+      setRzutInput(data.rzut ?? '');
       setStatusInput(ensureProductStatus(data.status));
       setPriceInput(String((data.priceCents ?? 0) / 100));
       setNotesInput(data.notes ?? '');
@@ -244,10 +255,11 @@ export default function Page() {
     sp.set('brands', brandsCsv);
     sp.set('sizes', sizesCsv);
     sp.set('conditions', conditionsCsv);
+    sp.set('rzuty', rzutyCsv);
     sp.set('page', String(page));
     sp.set('limit', String(limit));
     window.history.pushState({}, '', url);
-  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, page, limit]);
+  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, rzutyCsv, page, limit]);
 
   const fetchProducts = useCallback(async () => {
     if (loadingRef.current) return;
@@ -260,6 +272,7 @@ export default function Page() {
         brandsCsv,
         sizesCsv,
         conditionsCsv,
+        rzutyCsv,
         page,
         limit,
       });
@@ -280,7 +293,7 @@ export default function Page() {
     } finally {
       loadingRef.current = false;
     }
-  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, page, limit]);
+  }, [query, sort, statusCsv, brandsCsv, sizesCsv, conditionsCsv, rzutyCsv, page, limit]);
 
   useEffect(() => {
     pushUrl();
@@ -312,6 +325,7 @@ export default function Page() {
     setBrandsCsv('');
     setSizesCsv('');
     setConditionsCsv('');
+    setRzutyCsv('');
     setPage(1);
   };
 
@@ -355,6 +369,7 @@ export default function Page() {
         brand: brandInput || null,
         size: sizeInput || null,
         condition: conditionInput || null,
+        rzut: rzutInput || null,
         status: statusInput,
         priceCents: parsePriceInput(priceInput),
         notes: notesInput || null,
@@ -568,6 +583,20 @@ export default function Page() {
               {facets.conditions.map((condition) => (
                 <option key={condition} value={condition}>
                   {condition}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="min-w-[12rem] rounded border border-gray-300 px-3 py-2"
+              value={rzutyCsv}
+              onChange={(e) => resetAndFetch(() => setRzutyCsv(e.target.value))}
+              title="Rzut"
+            >
+              <option value="">Wszystkie rzuty</option>
+              {facets.rzuty.map((rzut) => (
+                <option key={rzut} value={rzut}>
+                  {rzut}
                 </option>
               ))}
             </select>
@@ -836,6 +865,14 @@ export default function Page() {
                           className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
                           value={sizeInput}
                           onChange={(e) => setSizeInput(e.target.value)}
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="text-gray-600">Rzut</span>
+                        <input
+                          className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                          value={rzutInput}
+                          onChange={(e) => setRzutInput(e.target.value)}
                         />
                       </label>
                       <label className="block text-sm">

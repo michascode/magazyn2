@@ -29,6 +29,7 @@ type PatchBody = Partial<{
   brand: string | null;
   size: string | null;
   condition: string | null;
+  rzut: string | null;
   priceCents: number;
   status: string | null;
   notes: string | null;
@@ -46,6 +47,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     brand: body.brand ?? undefined,
     size: body.size ?? undefined,
     condition: body.condition ?? undefined,
+    rzut: body.rzut ?? undefined,
     priceCents:
       typeof body.priceCents === 'number'
         ? Math.max(0, Math.floor(body.priceCents))

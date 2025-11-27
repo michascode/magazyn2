@@ -13,6 +13,7 @@ model Product {
   brand      String?
   size       String?
   condition  String?
+  rzut       String?
   status     String   @default("NA_MAGAZYNIE")
   priceCents Int      @default(0)
   sku        String?  @unique

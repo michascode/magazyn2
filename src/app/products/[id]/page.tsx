@@ -14,6 +14,7 @@ type Product = {
   brand: string | null;
   size: string | null;
   condition: string | null;
+  rzut: string | null;
   status: string;
   priceCents: number;
   notes: string | null;
@@ -35,6 +36,7 @@ export default function ProductPage() {
   const [brand, setBrand] = useState('');
   const [size, setSize] = useState('');
   const [condition, setCondition] = useState('');
+  const [rzut, setRzut] = useState('');
   const [status, setStatus] = useState(PRODUCT_STATUSES[0]);
   const [price, setPrice] = useState('0');
   const [notes, setNotes] = useState('');
@@ -51,6 +53,7 @@ export default function ProductPage() {
       setBrand(data.brand ?? '');
       setSize(data.size ?? '');
       setCondition(data.condition ?? '');
+      setRzut(data.rzut ?? '');
       setStatus(ensureProductStatus(data.status));
       setPrice(String((data.priceCents ?? 0) / 100));
       setNotes(data.notes ?? '');
@@ -79,6 +82,7 @@ export default function ProductPage() {
           brand: brand || null,
           size: size || null,
           condition: condition || null,
+          rzut: rzut || null,
           status,
           priceCents: Math.max(0, Math.round(Number(price || '0') * 100)),
           notes: notes || null,
@@ -197,6 +201,10 @@ export default function ProductPage() {
             <label className="block">
               <span className="text-sm">Rozmiar</span>
               <input className="mt-1 w-full border rounded px-3 py-2" value={size} onChange={(e) => setSize(e.target.value)} />
+            </label>
+            <label className="block">
+              <span className="text-sm">Rzut</span>
+              <input className="mt-1 w-full border rounded px-3 py-2" value={rzut} onChange={(e) => setRzut(e.target.value)} />
             </label>
             <label className="block">
               <span className="text-sm">Stan</span>
