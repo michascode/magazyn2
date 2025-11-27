@@ -34,14 +34,15 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
 
     const query = url.searchParams.get("query")?.trim() ?? "";
-    const sortKey = url.searchParams.get("sort") ?? "CREATED_DESC";
-    const page = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
-    const limit = Math.max(1, Number(url.searchParams.get("limit") ?? "12"));
+  const sortKey = url.searchParams.get("sort") ?? "CREATED_DESC";
+  const page = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
+  const limit = Math.max(1, Number(url.searchParams.get("limit") ?? "12"));
 
-    const brands = csv(url.searchParams.get("brands"));
-    const sizes = csv(url.searchParams.get("sizes"));
-    const conditions = csv(url.searchParams.get("conditions"));
-    const statuses = csv(url.searchParams.get("status"));
+  const brands = csv(url.searchParams.get("brands"));
+  const sizes = csv(url.searchParams.get("sizes"));
+  const conditions = csv(url.searchParams.get("conditions"));
+  const rzuty = csv(url.searchParams.get("rzuty"));
+  const statuses = csv(url.searchParams.get("status"));
 
     const AND: Prisma.ProductWhereInput[] = [];
 
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
     if (brands.length) AND.push({ brand: { in: brands } });
     if (sizes.length) AND.push({ size: { in: sizes } });
     if (conditions.length) AND.push({ condition: { in: conditions } });
+    if (rzuty.length) AND.push({ rzut: { in: rzuty } });
     if (statuses.length) {
       const allowed = statuses.filter(isProductStatus);
       if (allowed.length) {
@@ -70,7 +72,15 @@ export async function GET(req: Request) {
 
     const orderBy = SORT_MAP[sortKey] ?? SORT_MAP.CREATED_DESC;
 
-    const [items, total, brandRows, sizeRows, conditionRows, statusRows] =
+    const [
+      items,
+      total,
+      brandRows,
+      sizeRows,
+      conditionRows,
+      rzutRows,
+      statusRows,
+    ] =
       await Promise.all([
         prisma.product.findMany({
           where,
@@ -115,6 +125,12 @@ export async function GET(req: Request) {
         }),
         prisma.product.findMany({
           where,
+          distinct: ["rzut"],
+          select: { rzut: true },
+          orderBy: { rzut: "asc" },
+        }),
+        prisma.product.findMany({
+          where,
           distinct: ["status"],
           select: { status: true },
           orderBy: { status: "asc" },
@@ -125,6 +141,7 @@ export async function GET(req: Request) {
       brands: brandRows.map((r) => r.brand!).filter(Boolean),
       sizes: sizeRows.map((r) => r.size!).filter(Boolean),
       conditions: conditionRows.map((r) => r.condition!).filter(Boolean),
+      rzuty: rzutRows.map((r) => r.rzut!).filter(Boolean),
       statuses: Array.from(new Set(statusRows.map((r) => r.status))),
     };
 
@@ -160,6 +177,7 @@ export async function POST(req: Request) {
       dimensionA: string | null;
       dimensionB: string | null;
       dimensionC: string | null;
+      rzut: string | null;
     }>;
 
     const created = await prisma.product.create({
@@ -175,6 +193,7 @@ export async function POST(req: Request) {
         dimensionA: body.dimensionA ?? null,
         dimensionB: body.dimensionB ?? null,
         dimensionC: body.dimensionC ?? null,
+        rzut: body.rzut ?? null,
       },
       include: {
         photos: true,
